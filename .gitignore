@@ -1,0 +1,16 @@
+__pycache__/
+*.py[cod]
+*.pyo
+.DS_Store
+.env
+.venv
+env/
+venv/
+.pytest_cache/
+.ipynb_checkpoints/
+.streamlit/
+smoke_output.txt
+foo.tmp
+bar.tmp
+
+data/
