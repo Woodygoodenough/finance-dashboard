@@ -638,18 +638,14 @@ def main() -> None:
 
     st.sidebar.markdown("---")
     st.sidebar.markdown("### Data Source")
-    placeholder_url = (
-        base_env_url
-        or local_default_url
-        or "https://Woodygoodenough.github.io/finance-data-ETL/data/20251214T072235Z"
-    )
+    placeholder_url = "https://Woodygoodenough.github.io/finance-data-ETL/data"
     base_url = st.sidebar.text_input(
         "DATA_BASE_URL (file:// or https://)",
         value=base_env_url or local_default_url or "",
         placeholder=placeholder_url,
     )
     refresh_click = st.sidebar.button(
-        "🔄 Refresh data (pull to ./data)", use_container_width=True
+        "🔄 Refresh data (pull from Github Pages)", use_container_width=True
     )
 
     st.sidebar.markdown("### Visual Theme")
