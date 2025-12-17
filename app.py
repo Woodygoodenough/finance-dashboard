@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import os
 from datetime import datetime
+from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
@@ -19,126 +20,48 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 from plotly.subplots import make_subplots
+import tomli as tomllib
 
-from data_fetcher import FILE_SPECS, discover_local_base_url, ensure_local_data
+from data_fetcher import FILE_SPECS, ensure_local_data
+from styling import DARK_THEME, LIGHT_THEME, inject_css
+
+
+DEFAULT_CONFIG = {
+    "page": {"title": "Aurora Markets | Intelligence", "icon": "💹"},
+    "data": {
+        "placeholder_url": "https://Woodygoodenough.github.io/finance-data-ETL/data"
+    },
+    "theme": {"default_mode": "Light"},
+}
+
+
+def load_app_config(config_path: Path | None = None) -> Dict[str, Dict[str, str]]:
+    """Load config from .streamlit/config.toml, falling back to defaults."""
+    cfg = {k: v.copy() for k, v in DEFAULT_CONFIG.items()}
+    path = config_path or Path(__file__).parent / ".streamlit" / "config.toml"
+    if not path.exists():
+        return cfg
+    try:
+        parsed = tomllib.loads(path.read_text())
+        for section, defaults in cfg.items():
+            cfg[section] = {**defaults, **parsed.get(section, {})}
+    except Exception:
+        return cfg
+    return cfg
+
+
+APP_CONFIG = load_app_config()
 
 
 st.set_page_config(
-    page_title="Aurora Markets | Intelligence",
-    page_icon="💹",
+    page_title=APP_CONFIG["page"]["title"],
+    page_icon=APP_CONFIG["page"]["icon"],
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
 
 # ---------------------------------------------------------------------------
-# Theming & Styling
-# ---------------------------------------------------------------------------
-
-LIGHT_THEME = {
-    "bg": "#0f172a",
-    "surface": "#111827",
-    "card": "#111827",
-    "muted": "#94a3b8",
-    "text": "#e2e8f0",
-    "accent": "#22d3ee",
-    "accent_muted": "#0ea5e9",
-    "positive": "#34d399",
-    "negative": "#f87171",
-}
-
-DARK_THEME = {
-    "bg": "#f8fafc",
-    "surface": "#ffffff",
-    "card": "#ffffff",
-    "muted": "#475569",
-    "text": "#0f172a",
-    "accent": "#0ea5e9",
-    "accent_muted": "#0284c7",
-    "positive": "#16a34a",
-    "negative": "#ef4444",
-}
-
-
-def inject_css(theme: Dict[str, str]) -> None:
-    """Inject global styles for a product-like feel."""
-    st.markdown(
-        f"""
-        <style>
-            :root {{
-                --bg: {theme["bg"]};
-                --surface: {theme["surface"]};
-                --card: {theme["card"]};
-                --muted: {theme["muted"]};
-                --text: {theme["text"]};
-                --accent: {theme["accent"]};
-                --accent-muted: {theme["accent_muted"]};
-                --positive: {theme["positive"]};
-                --negative: {theme["negative"]};
-            }}
-            .stApp {{
-                background: radial-gradient(140% 120% at 0% 0%, rgba(34,211,238,0.07), transparent 40%),
-                            radial-gradient(160% 140% at 100% 20%, rgba(14,165,233,0.08), transparent 42%),
-                            var(--bg);
-                color: var(--text);
-                font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-            }}
-            .block-container {{
-                padding-top: 1.5rem;
-                padding-bottom: 3rem;
-                max-width: 1400px;
-            }}
-            h1, h2, h3, h4 {{
-                color: var(--text);
-                letter-spacing: -0.02em;
-            }}
-            .metric-card {{
-                background: linear-gradient(135deg, rgba(34,211,238,0.12), transparent 40%), var(--card);
-                border: 1px solid rgba(148,163,184,0.12);
-                border-radius: 16px;
-                padding: 12px 16px;
-                box-shadow: 0 12px 40px rgba(0,0,0,0.18);
-                backdrop-filter: blur(8px);
-            }}
-            .pill {{
-                display: inline-flex;
-                align-items: center;
-                gap: 8px;
-                padding: 6px 12px;
-                border-radius: 999px;
-                border: 1px solid rgba(148,163,184,0.2);
-                color: var(--text);
-                background: rgba(255,255,255,0.04);
-                font-size: 0.9rem;
-            }}
-            .sidebar .sidebar-content {{
-                background: var(--surface);
-            }}
-            .stButton > button {{
-                background: linear-gradient(90deg, var(--accent), var(--accent-muted));
-                color: white;
-                border-radius: 10px;
-                border: none;
-                padding: 0.4rem 1rem;
-                font-weight: 600;
-            }}
-            .card-title {{
-                color: var(--muted);
-                font-size: 0.9rem;
-                margin-bottom: 0.25rem;
-            }}
-            .download-btn button {{
-                width: 100%;
-                border: 1px solid rgba(148,163,184,0.4) !important;
-                background: var(--surface) !important;
-                color: var(--text) !important;
-            }}
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
-
-
 # ---------------------------------------------------------------------------
 # Data loading
 # ---------------------------------------------------------------------------
@@ -616,14 +539,10 @@ def about_section() -> None:
     )
 
 
-# ---------------------------------------------------------------------------
-# Page assembly
-# ---------------------------------------------------------------------------
-
-
-def main() -> None:
-    base_env_url = os.getenv("DATA_BASE_URL", "").strip()
-    local_default_url = discover_local_base_url()
+def sidebar_template(
+    app_config: Dict[str, Dict[str, str]], base_env_url: str
+) -> Tuple[str, str, bool, Dict[str, str]]:
+    """Centralize sidebar controls for consistency."""
     st.sidebar.markdown("### Navigation")
     page = st.sidebar.radio(
         "Go to",
@@ -638,10 +557,10 @@ def main() -> None:
 
     st.sidebar.markdown("---")
     st.sidebar.markdown("### Data Source")
-    placeholder_url = "https://Woodygoodenough.github.io/finance-data-ETL/data"
+    placeholder_url = app_config["data"]["placeholder_url"]
     base_url = st.sidebar.text_input(
         "DATA_BASE_URL (file:// or https://)",
-        value=base_env_url or local_default_url or "",
+        value=base_env_url,
         placeholder=placeholder_url,
     )
     refresh_click = st.sidebar.button(
@@ -649,13 +568,27 @@ def main() -> None:
     )
 
     st.sidebar.markdown("### Visual Theme")
-    theme_choice = st.sidebar.selectbox("Mode", ["Dark", "Light"], index=0)
-    theme = DARK_THEME if theme_choice == "Dark" else LIGHT_THEME
+    default_theme_mode = app_config["theme"].get("default_mode", "Light").lower()
+    theme_index = 0 if default_theme_mode == "light" else 1
+    theme_choice = st.sidebar.selectbox("Mode", ["Light", "Dark"], index=theme_index)
+    theme = LIGHT_THEME if theme_choice == "Light" else DARK_THEME
     inject_css(theme)
 
-    if st.sidebar.button("🔄 Refresh data"):
+    if st.sidebar.button("↻ Clear cache & rerun", use_container_width=True):
         fetch_csv.clear()
         st.experimental_rerun()
+
+    return page, base_url, refresh_click, theme
+
+
+# ---------------------------------------------------------------------------
+# Page assembly
+# ---------------------------------------------------------------------------
+
+
+def main() -> None:
+    base_env_url = os.getenv("DATA_BASE_URL", "").strip()
+    page, base_url, refresh_click, theme = sidebar_template(APP_CONFIG, base_env_url)
 
     if not base_url:
         st.sidebar.error(

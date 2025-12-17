@@ -6,4 +6,5 @@ altair>=5.4.1
 scipy>=1.13.1
 pyarrow>=17.0.0
 python-dotenv>=1.0.1
+tomli>=2.0.1
 
