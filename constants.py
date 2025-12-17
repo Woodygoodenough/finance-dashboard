@@ -11,3 +11,4 @@ FILE_SPECS: Dict[str, Dict] = {
 }
 PROJECT_ROOT = Path.cwd()
 DATA_DIR = PROJECT_ROOT / "data"
+CONFIG_PATH = PROJECT_ROOT / "config.toml"

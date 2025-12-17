@@ -21,7 +21,7 @@ import streamlit as st
 from plotly.subplots import make_subplots
 import tomli as tomllib
 
-from constants import DATA_DIR, FILE_SPECS
+from constants import CONFIG_PATH, DATA_DIR, FILE_SPECS
 from styling import DARK_THEME, LIGHT_THEME, inject_css
 
 # %%
@@ -31,14 +31,10 @@ DEFAULT_CONFIG = {
 }
 
 
-def load_app_config(config_path: Path | None = None) -> Dict[str, Dict[str, str]]:
-    """Load config from .streamlit/config.toml, falling back to defaults."""
+def load_app_config() -> Dict[str, Dict[str, str]]:
     cfg = {k: v.copy() for k, v in DEFAULT_CONFIG.items()}
-    path = config_path or Path(__file__).parent / ".streamlit" / "config.toml"
-    if not path.exists():
-        return cfg
     try:
-        parsed = tomllib.loads(path.read_text())
+        parsed = tomllib.loads(CONFIG_PATH.read_text())
         for section, defaults in cfg.items():
             cfg[section] = {**defaults, **parsed.get(section, {})}
     except Exception:
