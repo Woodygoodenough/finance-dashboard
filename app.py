@@ -7,10 +7,9 @@ individual failures so the experience remains usable even if a single file is
 temporarily unavailable.
 """
 
+# %%
 from __future__ import annotations
 
-import os
-from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -22,15 +21,12 @@ import streamlit as st
 from plotly.subplots import make_subplots
 import tomli as tomllib
 
-from data_fetcher import FILE_SPECS, ensure_local_data
+from constants import DATA_DIR, FILE_SPECS
 from styling import DARK_THEME, LIGHT_THEME, inject_css
 
-
+# %%
 DEFAULT_CONFIG = {
     "page": {"title": "Aurora Markets | Intelligence", "icon": "💹"},
-    "data": {
-        "placeholder_url": "https://Woodygoodenough.github.io/finance-data-ETL/data"
-    },
     "theme": {"default_mode": "Light"},
 }
 
@@ -61,6 +57,7 @@ st.set_page_config(
 )
 
 
+# %%
 # ---------------------------------------------------------------------------
 # ---------------------------------------------------------------------------
 # Data loading
@@ -68,26 +65,24 @@ st.set_page_config(
 
 
 @st.cache_data(show_spinner=False, ttl=60 * 60)
-def fetch_csv(url: str, parse_dates: Optional[List[str]]) -> pd.DataFrame:
+def fetch_csv(path: Path, parse_dates: Optional[List[str]]) -> pd.DataFrame:
     """Cached CSV reader with parsing and trimmed memory usage."""
-    df = pd.read_csv(url, parse_dates=parse_dates)
+    df = pd.read_csv(path, parse_dates=parse_dates)
     if "date" in df.columns:
         df["date"] = pd.to_datetime(df["date"])
     return df
 
 
-def load_datasets(base_url: str) -> Tuple[Dict[str, pd.DataFrame], List[str]]:
+def load_datasets(data_dir: Path) -> Dict[str, pd.DataFrame]:
     """Load each dataset, collecting errors instead of failing fast."""
     data: Dict[str, pd.DataFrame] = {}
-    errors: List[str] = []
     for key, spec in FILE_SPECS.items():
-        url = f"{base_url.rstrip('/')}/{spec['file']}"
-        try:
-            data[key] = fetch_csv(url, spec["parse_dates"])
-        except Exception as exc:  # noqa: BLE001
-            errors.append(f"{spec['file']}: {exc}")
-    return data, errors
+        path = data_dir / spec["file"]
+        data[key] = fetch_csv(path, spec["parse_dates"])
+    return data
 
+
+# %%
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -540,8 +535,8 @@ def about_section() -> None:
 
 
 def sidebar_template(
-    app_config: Dict[str, Dict[str, str]], base_env_url: str
-) -> Tuple[str, str, bool, Dict[str, str]]:
+    app_config: Dict[str, Dict[str, str]],
+) -> Tuple[str, Dict[str, str]]:
     """Centralize sidebar controls for consistency."""
     st.sidebar.markdown("### Navigation")
     page = st.sidebar.radio(
@@ -556,16 +551,6 @@ def sidebar_template(
     )
 
     st.sidebar.markdown("---")
-    st.sidebar.markdown("### Data Source")
-    placeholder_url = app_config["data"]["placeholder_url"]
-    base_url = st.sidebar.text_input(
-        "DATA_BASE_URL (file:// or https://)",
-        value=base_env_url,
-        placeholder=placeholder_url,
-    )
-    refresh_click = st.sidebar.button(
-        "🔄 Refresh data (pull from Github Pages)", use_container_width=True
-    )
 
     st.sidebar.markdown("### Visual Theme")
     default_theme_mode = app_config["theme"].get("default_mode", "Light").lower()
@@ -574,51 +559,26 @@ def sidebar_template(
     theme = LIGHT_THEME if theme_choice == "Light" else DARK_THEME
     inject_css(theme)
 
-    if st.sidebar.button("↻ Clear cache & rerun", use_container_width=True):
-        fetch_csv.clear()
-        st.experimental_rerun()
-
-    return page, base_url, refresh_click, theme
+    return page, theme
 
 
 # ---------------------------------------------------------------------------
 # Page assembly
 # ---------------------------------------------------------------------------
 
+# %%
+
 
 def main() -> None:
-    base_env_url = os.getenv("DATA_BASE_URL", "").strip()
-    page, base_url, refresh_click, theme = sidebar_template(APP_CONFIG, base_env_url)
+    page, theme = sidebar_template(APP_CONFIG)
 
-    if not base_url:
-        st.sidebar.error(
-            "Set DATA_BASE_URL (remote root) or place CSVs under ./data/<snapshot>/"
-        )
-        st.stop()
-
-    # Ensure local snapshot presence
-    local_base_url, fetch_errors = ensure_local_data(
-        base_url, manual_refresh=refresh_click
-    )
-    if fetch_errors:
-        st.warning("Issues refreshing data:\n- " + "\n- ".join(fetch_errors))
-    if not local_base_url:
-        st.error("Could not find or fetch a valid local dataset. Check DATA_BASE_URL.")
-        st.stop()
-
-    data, errors = load_datasets(local_base_url)
-    if errors:
-        st.warning("Issues loading some sources:\n- " + "\n- ".join(errors))
-
-    required_keys = ["dim_ticker", "fact_prices", "fact_features", "fact_latest"]
-    if any(k not in data for k in required_keys):
-        st.error("Critical datasets missing. Please verify DATA_BASE_URL.")
-        st.stop()
+    data = load_datasets(DATA_DIR)
 
     dim_ticker = data["dim_ticker"]
     fact_prices = data["fact_prices"]
     fact_features = data["fact_features"]
     latest_snapshot = data["fact_latest"]
+    print("Latest snapshot:", latest_snapshot)
     dim_date = data.get("dim_date", pd.DataFrame())
     etl_meta = data.get("etl_metadata", pd.DataFrame())
 
@@ -671,7 +631,7 @@ def main() -> None:
         )
     ]
     latest_f = latest_snapshot[latest_snapshot["ticker"].isin(selected_tickers)]
-
+    print("latest_f:", latest_f)
     # Page content
     if page == "Overview":
         st.title("Aurora Markets")
@@ -764,5 +724,4 @@ def main() -> None:
         )
 
 
-if __name__ == "__main__":
-    main()
+main()
