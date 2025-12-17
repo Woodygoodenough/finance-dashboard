@@ -1,23 +1,20 @@
 from __future__ import annotations
-
-import os
 import pandas as pd
 
-from constants import DATA_DIR, FILE_SPECS
-from pathlib import Path
+from constants import DATA_DIR, FILE_SPECS, SOURCE_URL
 
 
-def fetch_and_store(source_root: Path) -> bool:
+def fetch_and_store(source_url: str) -> bool:
     """
-    Download all CSVs from source_root into ./data (overwrites previous data).
+    Download all CSVs from source_url into ./data (overwrites previous data).
     Returns success.
     """
     DATA_DIR.mkdir(exist_ok=True)
 
     for spec in FILE_SPECS.values():
-        path = source_root / spec["file"]
+        url = f"{source_url}/{spec['file']}"
         try:
-            df = pd.read_csv(path, parse_dates=spec["parse_dates"])
+            df = pd.read_csv(url, parse_dates=spec["parse_dates"])
             df.to_csv(DATA_DIR / spec["file"], index=False)
         except Exception as exc:  # noqa: BLE001
             return False
@@ -26,9 +23,10 @@ def fetch_and_store(source_root: Path) -> bool:
 
 def cli_fetch() -> int:
     """
-    CLI helper: fetch data from DATA_BASE_URL (env) or default GitHub Pages root.
+    CLI helper: fetch data from SOURCE_URL.
     """
-    success = fetch_and_store(DATA_DIR)
+
+    success = fetch_and_store(SOURCE_URL)
     if not success:
         print("Failed to fetch data")
         return 1
