@@ -4,9 +4,10 @@ import os
 import pandas as pd
 
 from constants import DATA_DIR, FILE_SPECS
+from pathlib import Path
 
 
-def fetch_and_store(source_root: str) -> bool:
+def fetch_and_store(source_root: Path) -> bool:
     """
     Download all CSVs from source_root into ./data (overwrites previous data).
     Returns success.
@@ -27,10 +28,7 @@ def cli_fetch() -> int:
     """
     CLI helper: fetch data from DATA_BASE_URL (env) or default GitHub Pages root.
     """
-    source = os.getenv(
-        "DATA_BASE_URL", "https://Woodygoodenough.github.io/finance-data-ETL/data"
-    )
-    success = fetch_and_store(source)
+    success = fetch_and_store(DATA_DIR)
     if not success:
         print("Failed to fetch data")
         return 1
