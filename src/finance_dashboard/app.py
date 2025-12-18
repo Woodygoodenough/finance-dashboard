@@ -11,7 +11,7 @@ temporarily unavailable.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List
 
 import numpy as np
 import pandas as pd
@@ -19,49 +19,30 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 from plotly.subplots import make_subplots
-import tomli as tomllib
 
-from constants import CONFIG_PATH, DATA_DIR, FILE_SPECS
-from styling import DARK_THEME, LIGHT_THEME, inject_css
+from settings import APP_CONFIG
 
 # %%
-DEFAULT_CONFIG = {
-    "page": {"title": "Aurora Markets | Intelligence", "icon": "💹"},
-    "theme": {"default_mode": "Light"},
+FILE_SPECS: Dict[str, Dict] = {
+    "dim_date": {"file": "dim_date.csv", "parse_dates": ["date"]},
+    "dim_ticker": {"file": "dim_ticker.csv", "parse_dates": None},
+    "fact_prices": {"file": "fact_prices.csv", "parse_dates": ["date"]},
+    "fact_features": {"file": "fact_features_daily.csv", "parse_dates": ["date"]},
+    "fact_latest": {"file": "fact_latest_snapshot.csv", "parse_dates": ["last_date"]},
+    "etl_metadata": {"file": "etl_metadata.csv", "parse_dates": ["run_timestamp_utc"]},
 }
 
 
-def load_app_config() -> Dict[str, Dict[str, str]]:
-    cfg = {k: v.copy() for k, v in DEFAULT_CONFIG.items()}
-    try:
-        parsed = tomllib.loads(CONFIG_PATH.read_text())
-        for section, defaults in cfg.items():
-            cfg[section] = {**defaults, **parsed.get(section, {})}
-    except Exception:
-        return cfg
-    return cfg
-
-
-APP_CONFIG = load_app_config()
-
-
 st.set_page_config(
-    page_title=APP_CONFIG["page"]["title"],
-    page_icon=APP_CONFIG["page"]["icon"],
+    page_title=APP_CONFIG.pages.overview.title,
+    page_icon=APP_CONFIG.pages.overview.icon,
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
 
-# %%
-# ---------------------------------------------------------------------------
-# ---------------------------------------------------------------------------
-# Data loading
-# ---------------------------------------------------------------------------
-
-
 @st.cache_data(show_spinner=False, ttl=60 * 60)
-def fetch_csv(path: Path, parse_dates: Optional[List[str]]) -> pd.DataFrame:
+def fetch_csv(path: Path, parse_dates: List[str] | None) -> pd.DataFrame:
     """Cached CSV reader with parsing and trimmed memory usage."""
     df = pd.read_csv(path, parse_dates=parse_dates)
     if "date" in df.columns:
@@ -137,21 +118,14 @@ def metric_cards(latest_df: pd.DataFrame, tickers: List[str]) -> None:
     cols = st.columns(len(cards))
     for col, (title, value, delta) in zip(cols, cards):
         with col:
-            st.markdown('<div class="metric-card">', unsafe_allow_html=True)
-            st.markdown(
-                f'<div class="card-title">{title}</div>', unsafe_allow_html=True
-            )
             st.metric(
-                label="",
+                label=title,
                 value=value,
                 delta=format_pct(delta) if delta is not None else None,
             )
-            st.markdown("</div>", unsafe_allow_html=True)
 
 
-def heatmap_returns(
-    latest_df: pd.DataFrame, tickers: List[str], theme: Dict[str, str]
-) -> None:
+def heatmap_returns(latest_df: pd.DataFrame, tickers: List[str]) -> None:
     subset = latest_df[latest_df["ticker"].isin(tickers)]
     if subset.empty:
         st.info("No return data for heatmap.")
@@ -166,18 +140,14 @@ def heatmap_returns(
     )
     fig.update_layout(
         margin=dict(l=0, r=0, t=10, b=0),
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(0,0,0,0)",
-        font=dict(color=theme["text"]),
     )
-    st.plotly_chart(fig, use_container_width=True, theme=None)
+    st.plotly_chart(fig, width="stretch")
 
 
 def sparkline_panel(
     price_df: pd.DataFrame,
     tickers: List[str],
     lookback_days: int,
-    theme: Dict[str, str],
 ) -> None:
     if price_df.empty:
         st.info("No price history available.")
@@ -205,7 +175,7 @@ def sparkline_panel(
                 x=data["date"],
                 y=data["close"],
                 mode="lines",
-                line=dict(color=theme["accent_muted"], width=2),
+                line=dict(width=2),
                 hovertemplate="<b>%{x|%Y-%m-%d}</b><br>Close: %{y:.2f}<extra></extra>",
                 showlegend=False,
             ),
@@ -215,16 +185,13 @@ def sparkline_panel(
     fig.update_layout(
         height=220 * rows,
         margin=dict(l=0, r=0, t=20, b=0),
-        plot_bgcolor="rgba(0,0,0,0)",
-        paper_bgcolor="rgba(0,0,0,0)",
-        font=dict(color=theme["text"]),
         showlegend=False,
     )
-    st.plotly_chart(fig, use_container_width=True, theme=None)
+    st.plotly_chart(fig, width="stretch")
 
 
 def candlestick_panel(
-    prices: pd.DataFrame, features: pd.DataFrame, ticker: str, theme: Dict[str, str]
+    prices: pd.DataFrame, features: pd.DataFrame, ticker: str
 ) -> None:
     merged = (
         prices[prices["ticker"] == ticker]
@@ -261,8 +228,6 @@ def candlestick_panel(
             low=merged["low"],
             close=merged["close"],
             name="Price",
-            increasing_line_color=theme["accent"],
-            decreasing_line_color=theme["negative"],
         ),
         row=1,
         col=1,
@@ -294,7 +259,7 @@ def candlestick_panel(
             x=merged["date"],
             y=merged["bb_up_20"],
             mode="lines",
-            line=dict(color=theme["muted"], width=1),
+            line=dict(width=1),
             name="BB Up",
             opacity=0.6,
         ),
@@ -306,7 +271,7 @@ def candlestick_panel(
             x=merged["date"],
             y=merged["bb_low_20"],
             mode="lines",
-            line=dict(color=theme["muted"], width=1),
+            line=dict(width=1),
             name="BB Low",
             fill="tonexty",
             fillcolor="rgba(148,163,184,0.08)",
@@ -320,7 +285,6 @@ def candlestick_panel(
         go.Bar(
             x=merged["date"],
             y=merged["volume"],
-            marker_color=theme["accent_muted"],
             name="Volume",
         ),
         row=2,
@@ -334,7 +298,7 @@ def candlestick_panel(
             y=dd_series,
             mode="lines",
             fill="tozeroy",
-            line=dict(color=theme["negative"], width=1.2),
+            line=dict(width=1.2),
             name="Drawdown",
             hovertemplate="Drawdown: %{y:.2%}<extra></extra>",
         ),
@@ -347,7 +311,7 @@ def candlestick_panel(
             x=merged["date"],
             y=merged["vol_20"],
             mode="lines",
-            line=dict(color=theme["accent"], width=1.8),
+            line=dict(width=1.8),
             name="Vol 20d",
             hovertemplate="Vol 20d: %{y:.2%}<extra></extra>",
         ),
@@ -359,20 +323,16 @@ def candlestick_panel(
     fig.update_layout(
         height=720,
         margin=dict(l=0, r=0, t=20, b=0),
-        plot_bgcolor="rgba(0,0,0,0)",
-        paper_bgcolor="rgba(0,0,0,0)",
-        font=dict(color=theme["text"]),
         legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0),
         hovermode="x unified",
     )
-    st.plotly_chart(fig, use_container_width=True, theme=None)
+    st.plotly_chart(fig, width="stretch")
 
 
 def risk_return_scatter(
     features: pd.DataFrame,
     prices: pd.DataFrame,
     tickers: List[str],
-    theme: Dict[str, str],
 ) -> None:
     if features.empty:
         st.info("No features available to compute risk.")
@@ -401,17 +361,12 @@ def risk_return_scatter(
     )
     fig.update_layout(
         height=460,
-        plot_bgcolor="rgba(0,0,0,0)",
-        paper_bgcolor="rgba(0,0,0,0)",
-        font=dict(color=theme["text"]),
         margin=dict(l=0, r=0, t=10, b=0),
     )
-    st.plotly_chart(fig, use_container_width=True, theme=None)
+    st.plotly_chart(fig, width="stretch")
 
 
-def correlation_heatmap(
-    features: pd.DataFrame, tickers: List[str], theme: Dict[str, str]
-) -> None:
+def correlation_heatmap(features: pd.DataFrame, tickers: List[str]) -> None:
     subset = features[features["ticker"].isin(tickers)].pivot(
         index="date", columns="ticker", values="ret_1d"
     )
@@ -428,17 +383,12 @@ def correlation_heatmap(
     )
     fig.update_layout(
         height=420,
-        plot_bgcolor="rgba(0,0,0,0)",
-        paper_bgcolor="rgba(0,0,0,0)",
-        font=dict(color=theme["text"]),
         margin=dict(l=0, r=0, t=10, b=0),
     )
-    st.plotly_chart(fig, use_container_width=True, theme=None)
+    st.plotly_chart(fig, width="stretch")
 
 
-def portfolio_sandbox(
-    features: pd.DataFrame, tickers: List[str], theme: Dict[str, str]
-) -> None:
+def portfolio_sandbox(features: pd.DataFrame, tickers: List[str]) -> None:
     subset = (
         features[features["ticker"].isin(tickers)]
         .pivot(index="date", columns="ticker", values="ret_1d")
@@ -483,7 +433,7 @@ def portfolio_sandbox(
             x=cum.index,
             y=cum,
             mode="lines",
-            line=dict(color=theme["accent"], width=2),
+            line=dict(width=2),
             name="Growth",
         ),
         row=1,
@@ -494,7 +444,7 @@ def portfolio_sandbox(
             x=dd.index,
             y=dd,
             mode="lines",
-            line=dict(color=theme["negative"], width=1.5),
+            line=dict(width=1.5),
             fill="tozeroy",
             name="Drawdown",
         ),
@@ -503,13 +453,10 @@ def portfolio_sandbox(
     )
     fig.update_layout(
         height=520,
-        plot_bgcolor="rgba(0,0,0,0)",
-        paper_bgcolor="rgba(0,0,0,0)",
-        font=dict(color=theme["text"]),
         margin=dict(l=0, r=0, t=10, b=0),
         hovermode="x unified",
     )
-    st.plotly_chart(fig, use_container_width=True, theme=None)
+    st.plotly_chart(fig, width="stretch")
 
 
 @st.cache_data(show_spinner=False)
@@ -521,18 +468,13 @@ def about_section() -> None:
     st.markdown(
         """
         **About this project**
-
         - Pipeline: GitHub Actions runs ETL → publishes CSVs to GitHub Pages.
-        - Consumption: Streamlit reads the same published CSVs (no direct APIs).
-        - Alignment: Power BI can point to the identical CSV endpoints for parity.
-        - UX: Premium theming, cross-filtered analytics, portfolio sandbox.
+        - Consumption: Streamlit reads the same published CSVs (not via direct APIs).
         """
     )
 
 
-def sidebar_template(
-    app_config: Dict[str, Dict[str, str]],
-) -> Tuple[str, Dict[str, str]]:
+def sidebar_template() -> str:
     """Centralize sidebar controls for consistency."""
     st.sidebar.markdown("### Navigation")
     page = st.sidebar.radio(
@@ -548,33 +490,27 @@ def sidebar_template(
 
     st.sidebar.markdown("---")
 
-    st.sidebar.markdown("### Visual Theme")
-    default_theme_mode = app_config["theme"].get("default_mode", "Light").lower()
-    theme_index = 0 if default_theme_mode == "light" else 1
-    theme_choice = st.sidebar.selectbox("Mode", ["Light", "Dark"], index=theme_index)
-    theme = LIGHT_THEME if theme_choice == "Light" else DARK_THEME
-    inject_css(theme)
+    if st.button("Refresh data"):
+        st.cache_data.clear()  # clears all @st.cache_data entries
+        st.rerun()
 
-    return page, theme
+    return page
 
 
 # ---------------------------------------------------------------------------
 # Page assembly
 # ---------------------------------------------------------------------------
 
-# %%
-
 
 def main() -> None:
-    page, theme = sidebar_template(APP_CONFIG)
+    page = sidebar_template()
 
-    data = load_datasets(DATA_DIR)
+    data = load_datasets(APP_CONFIG.paths.data_dir)
 
     dim_ticker = data["dim_ticker"]
     fact_prices = data["fact_prices"]
     fact_features = data["fact_features"]
     latest_snapshot = data["fact_latest"]
-    print("Latest snapshot:", latest_snapshot)
     dim_date = data.get("dim_date", pd.DataFrame())
     etl_meta = data.get("etl_metadata", pd.DataFrame())
 
@@ -627,35 +563,24 @@ def main() -> None:
         )
     ]
     latest_f = latest_snapshot[latest_snapshot["ticker"].isin(selected_tickers)]
-    print("latest_f:", latest_f)
     # Page content
     if page == "Overview":
-        st.title("Aurora Markets")
-        st.caption("Multi-asset situational awareness across your watchlist.")
+        st.title(APP_CONFIG.pages.overview.title)
+        st.caption(APP_CONFIG.pages.overview.description)
 
         col_left, col_right = st.columns([3, 1])
         with col_left:
             st.subheader("Last ETL refresh")
             st.markdown(f"**{latest_etl_timestamp(etl_meta)}**")
         with col_right:
-            st.markdown(
-                """
-                <div class="pill">
-                    <span>Selection</span>
-                    <strong>"""
-                + f"{len(selected_tickers)} tickers"
-                + """</strong>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
+            st.markdown(f"**Selection:** {len(selected_tickers)} tickers")
 
         metric_cards(latest_f, selected_tickers)
         st.markdown("### Return heatmap")
-        heatmap_returns(latest_f, selected_tickers, theme)
+        heatmap_returns(latest_f, selected_tickers)
 
         st.markdown("### Micro trends (sparklines)")
-        sparkline_panel(price_f, selected_tickers, lookback_days=180, theme=theme)
+        sparkline_panel(price_f, selected_tickers, lookback_days=180)
 
     elif page == "Asset Deep Dive":
         st.title("Asset Deep Dive")
@@ -664,32 +589,26 @@ def main() -> None:
         if not regimes.empty:
             trend = regimes["trend_regime"].iloc[0]
             vol_regime = regimes["vol_regime"].iloc[0]
-            st.markdown(
-                f"""
-                <div class="pill">Trend regime: <strong>{trend}</strong></div>
-                <div style="height:4px"></div>
-                <div class="pill">Vol regime: <strong>{vol_regime}</strong></div>
-                """,
-                unsafe_allow_html=True,
-            )
-        candlestick_panel(price_f, feat_f, focus, theme)
+            st.markdown(f"**Trend regime:** {trend}")
+            st.markdown(f"**Vol regime:** {vol_regime}")
+        candlestick_panel(price_f, feat_f, focus)
 
     elif page == "Compare / Sandbox":
         st.title("Compare & Portfolio Sandbox")
         col1, col2 = st.columns(2)
         with col1:
             st.subheader("Risk vs Return")
-            risk_return_scatter(feat_f, price_f, selected_tickers, theme)
+            risk_return_scatter(feat_f, price_f, selected_tickers)
         with col2:
             st.subheader("Correlation matrix")
-            correlation_heatmap(feat_f, selected_tickers, theme)
+            correlation_heatmap(feat_f, selected_tickers)
 
         st.markdown("### Portfolio sandbox")
         sandbox_tickers = st.multiselect(
             "Portfolio tickers", selected_tickers, default=selected_tickers[:4]
         )
         if sandbox_tickers:
-            portfolio_sandbox(feat_f, sandbox_tickers, theme)
+            portfolio_sandbox(feat_f, sandbox_tickers)
         else:
             st.info("Select at least one ticker for the sandbox.")
 

@@ -1,0 +1,30 @@
+paths:
+  data_dir: data
+
+urls:
+  data_source: https://Woodygoodenough.github.io/finance-data-ETL/data
+  
+file_specs:
+  files:
+    dim_date:
+      file_name: dim_date.csv
+      parse_dates:
+        - date
+    dim_ticker:
+      file_name: dim_ticker.csv
+    fact_prices:
+      file_name: fact_prices.csv
+      parse_dates:
+        - date
+    fact_features:
+      file_name: fact_features_daily.csv
+      parse_dates:
+        - date
+    fact_latest:
+      file_name: fact_latest_snapshot.csv
+      parse_dates:
+        - last_date
+    etl_metadata:
+      file_name: etl_metadata.csv
+      parse_dates:
+        - run_timestamp_utc

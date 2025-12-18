@@ -8,9 +8,15 @@ env/
 venv/
 .pytest_cache/
 .ipynb_checkpoints/
-.streamlit/
 smoke_output.txt
 foo.tmp
 bar.tmp
 
 data/
+
+*.egg-info/
+
+build/
+dist/
+
+*.ipynb
